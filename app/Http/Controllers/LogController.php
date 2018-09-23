@@ -60,10 +60,7 @@ class LogController extends Controller
 
         $this->skipassService->maybeUpdateLogs();
 
-        return Log::where([
-            'project_id' => $this->skipassService->getProject()->id,
-            'ticket_id' => $this->skipassService->getTicket()->id
-        ])->get();
+        return Log::with(['ticket', 'lift'])->where('ticket_id', $this->skipassService->getTicket()->id)->get();
     }
 
     private function maybeUpdateLogs() {

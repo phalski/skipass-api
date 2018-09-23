@@ -27,7 +27,6 @@ class CreateLogsTable extends Migration
             $table->foreign('ticket_id')->references('id')->on('tickets');
             $table->foreign('lift_id')->references('id')->on('lifts');
             $table->unique(['project_id', 'ticket_id', 'lift_id', 'day_n', 'ride_n']);
-            $table->index(['project_id', 'ticket_id']);
         });
     }
 

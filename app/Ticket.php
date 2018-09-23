@@ -20,4 +20,14 @@ class Ticket extends Model
         'updated_at' => 'datetime',
         'last_day_at' => 'datetime'
     ];
+
+    public function project()
+    {
+        return $this->belongsTo('App\Project');
+    }
+
+    public function logs()
+    {
+        return $this->hasMany('App\Log');
+    }
 }

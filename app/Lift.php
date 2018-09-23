@@ -15,4 +15,14 @@ class Lift extends Model
     protected $fillable = [
         'project_id', 'name', 'lower_elevation_meters', 'upper_elevation_meters', 'ride_duration'
     ];
+
+    public function project()
+    {
+        return $this->belongsTo('App\Project');
+    }
+
+    public function logs()
+    {
+        return $this->hasMany('App\Log');
+    }
 }
