@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Log;
 use App\SkipassServiceInterface;
 use Illuminate\Http\Request;
-use Psr\Http\Message\ResponseInterface;
 
 class LogController extends Controller
 {
@@ -38,73 +37,30 @@ class LogController extends Controller
             ]
         ]);
 
+
+        $this->skipassService->setProject($data['project']);
+
+        if (array_key_exists('ticket', $data)) {
+            $this->skipassService->setTicket($data['ticket']);
+        } elseif (array_key_exists('wtp', $data)) {
+            $this->skipassService->setWtp($data['wtp']);
+
+        }
+
         try {
-            $this->skipassService->setProject($data['project']);
+            $this->skipassService->maybeUpdateLogs();
         } catch (\Exception $e) {
             return self::responseFor($e);
         }
 
-        if (array_key_exists('ticket', $data)) {
-            try {
-                $this->skipassService->setTicket($data['ticket']);
-            } catch (\Exception $e) {
-                return self::responseFor($e);
-            }
-        } elseif (array_key_exists('wtp', $data)) {
-            try {
-                $this->skipassService->setWtp($data['wtp']);
-            } catch (\Exception $e) {
-                return self::responseFor($e);
-            }
-        }
-
-        $this->skipassService->maybeUpdateLogs();
-
-        return Log::with(['ticket', 'lift'])->where('ticket_id', $this->skipassService->getTicket()->id)->get();
+        return Log::where('ticket_id', $this->skipassService->getTicket()->id)->get();
     }
-
-    private function maybeUpdateLogs() {
-        $ticket = $this->skipassService->getTicket();
-        if (is_null($ticket)) {
-            // wtp mode -> always fetch all
-            try {
-                echo 'update logs';
-                $this->skipassService->updateLogs(-1, 0);
-            } catch (\Exception $e) {
-                return self::responseFor($e);
-            }
-        } elseif (is_null($ticket->last_day_at) || $ticket->updated_at->diff($ticket->last_day_at)->m < 5 )  {
-            // we have a last day set and the difference to the latest update is shorter than 6 months -> update count
-            // and fetch only the missing logs
-
-            try {
-                echo 'update count';
-                $this->skipassService->updateDayCount();
-            } catch (\Exception $e) {
-                return self::responseFor($e);
-            }
-
-            $ticket = $this->skipassService->getTicket();
-            $offset = is_null($ticket->last_day_n) ? 0 : $ticket->last_day_n + 1;
-
-            // only update when new days present
-            if ($offset == 0 || $offset < $ticket->day_count) {
-                try {
-                    echo 'update logs';
-                    $this->skipassService->updateLogs(-1, $offset);
-                } catch (\Exception $e) {
-                    return self::responseFor($e);
-                }
-            }
-        }
-    }
-
 
     /**
      * @param \Throwable $throwable
-     * @return ResponseInterface
+     * @return mixed
      */
-    private static function responseFor($throwable): ResponseInterface
+    private static function responseFor($throwable)
     {
         $code = $throwable->getCode() == 0 ? 500 : $throwable->getCode();
         return response()->json(['error' => $throwable->getMessage()], $code);

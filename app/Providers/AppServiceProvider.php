@@ -16,7 +16,7 @@ class AppServiceProvider extends ServiceProvider
     public function register()
     {
         $this->app->singleton(SkipassServiceInterface::class, function($app) {
-            return new SkipassService('http://kv.skipass.cx', 'en', 'Europe/Berlin', new \DateInterval('P6M'));
+            return new SkipassService('http://kv.skipass.cx', 'en', 'Europe/Berlin', new \DateInterval('P5M'));
         });
     }
 }

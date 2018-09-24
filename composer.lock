@@ -1682,7 +1682,7 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/phalski/skipass-client.git",
-                "reference": "d20ab072183783cbd3692eb21317634e467b68f2"
+                "reference": "f3b369b58bc73043d21c92e2469404893c66f3fc"
             },
             "require": {
                 "ext-dom": "*",
@@ -1711,7 +1711,7 @@
                 }
             ],
             "description": "phalski/skipass",
-            "time": "2018-09-23T13:16:23+00:00"
+            "time": "2018-09-24T06:38:31+00:00"
         },
         {
             "name": "psr/container",

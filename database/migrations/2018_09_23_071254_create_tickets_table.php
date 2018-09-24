@@ -22,13 +22,16 @@ class CreateTicketsTable extends Migration
             $table->smallInteger('pos', false, true);
             $table->mediumInteger('serial', false, true);
             $table->mediumInteger('day_count', false, true)->nullable();
+            $table->integer('first_lift_id', false, true)->nullable();
             $table->date('first_day_at')->nullable();
             $table->mediumInteger('first_day_n', false, true)->nullable();
             $table->date('last_day_at')->nullable();
             $table->mediumInteger('last_day_n', false, true)->nullable();
+            $table->timestamp('last_logs_update')->nullable();
             $table->timestamps();
 
             $table->foreign('project_id')->references('id')->on('projects');
+            $table->foreign('first_lift_id')->references('id')->on('lifts');
             $table->unique(['project_id', 'name']);
             $table->unique(['project_name', 'name']); // faster lookup
         });

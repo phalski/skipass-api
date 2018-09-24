@@ -13,12 +13,13 @@ class Ticket extends Model
      * @var array
      */
     protected $fillable = [
-        'project_id', 'project_name', 'name', 'project', 'pos', 'serial', 'day_count', 'first_day_at', 'first_day_n', 'last_day_at', 'last_day_n'
+        'project_id', 'project_name', 'name', 'project', 'pos', 'serial', 'day_count', 'first_lift_id', 'first_day_at', 'first_day_n', 'last_day_at', 'last_day_n', 'last_logs_update'
     ];
 
     protected $casts = [
         'updated_at' => 'datetime',
-        'last_day_at' => 'datetime'
+        'last_day_at' => 'datetime',
+        'last_logs_update' => 'datetime'
     ];
 
     public function project()
@@ -29,5 +30,10 @@ class Ticket extends Model
     public function logs()
     {
         return $this->hasMany('App\Log');
+    }
+
+    public function firstLift()
+    {
+        return $this->hasOne('App\Lift');
     }
 }

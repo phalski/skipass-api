@@ -15,4 +15,8 @@ $router->get('/', function () use ($router) {
     return $router->app->version();
 });
 
+$router->get('projects', 'ProjectController@index');
+$router->get('projects/{name}', 'ProjectController@show');
+$router->get('projects/{project}/tickets', 'TicketController@index');
+
 $router->get('logs', 'LogController@show');

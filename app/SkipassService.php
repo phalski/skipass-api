@@ -41,6 +41,12 @@ class SkipassService implements SkipassServiceInterface
      */
     private $pass;
 
+    /** @var string|null */
+    private $ticket_name;
+
+    /** @var string|null */
+    private $wtp_name;
+
 
     // local data
 
@@ -87,15 +93,21 @@ class SkipassService implements SkipassServiceInterface
 
         try {
             $this->client = Client::for($project, $this->base_uri, $this->locale);
-            $this->project = Project::firstOrCreate([
-                'name' => $project
-            ]);
+            $this->project = Project::where('name', $project)->first();
+            if (is_null($this->project)) {
+                // does a http request, so only call when no project is found in own DB
+                $this->client->ensureValidProjectId();
+                $this->project = Project::firstOrCreate([
+                    'name' => $project
+                ]);
+            }
+
             $this->pass = null;
             $this->ticket = null;
             $this->lifts = [];
             $this->logs = [];
         } catch (NotFoundException $e) {
-            throw new \InvalidArgumentException('Project name is invalid: ' . $project, 400, $e);
+            throw new \InvalidArgumentException('Project name not found: ' . $project, 404, $e);
         } catch (FetchException $e) {
             throw new \RuntimeException('Failed to retrieve data from: ' . $this->base_uri, 502, $e);
         }
@@ -103,55 +115,17 @@ class SkipassService implements SkipassServiceInterface
 
     public function setTicket($ticket)
     {
-        $this->ensureProject();
-
-        try {
-            $t = Ticket::for($ticket);
-            $this->client->setTicket($t);
-            $this->pass = new Skipass($this->client, new Selector($this->timezone));
-            $this->ticket = \App\Ticket::firstOrCreate(
-                [
-                    'project_id' => $this->project->id,
-                    'project_name' => $this->project->name,
-                    'name' => $t->getId()],
-                [
-                    'project' => $t->getProject(),
-                    'pos' => $t->getPos(),
-                    'serial' => $t->getSerial()
-                ]);
-            $this->lifts = [];
-            $this->logs = [];
-        } catch (\InvalidArgumentException $e) {
-            throw new \InvalidArgumentException('Ticket has invalid format: ' . $ticket, 400, $e);
-        } catch (NotFoundException $e) {
-            throw new \InvalidArgumentException('Ticket not found: ' . $ticket, 404, $e);
-        } catch (FetchException $e) {
-            throw new \RuntimeException('Failed to retrieve data from: ' . $this->base_uri, 502, $e);
-        }
+        $this->ticket_name = $ticket;
+        $this->ticket = \App\Ticket::where('name', $ticket)->first();
+        $this->wtp_name = null;
     }
 
     public function setWtp($wtp)
     {
-        $this->ensureProject();
-
-        try {
-            $this->client->setWtp(Wtp::for($wtp));
-            $this->pass = new Skipass($this->client, new Selector($this->timezone));
-            $this->ticket = new \App\Ticket([
-                'project_name' => $this->client->getProjectId()
-            ]);
-            $this->lifts = [];
-            $this->logs = [];
-        } catch (\InvalidArgumentException $e) {
-            throw new \InvalidArgumentException('WTP has invalid format: ' . $wtp, 400, $e);
-        } catch (NotFoundException $e) {
-            throw new \InvalidArgumentException('WTP not found: ' . $wtp, 404, $e);
-        } catch (FetchException $e) {
-            throw new \RuntimeException('Failed to retrieve data from: ' . $this->base_uri, 502, $e);
-        }
+        $this->wtp_name = $wtp;
+        $this->ticket_name = null;
+        $this->ticket = null;
     }
-
-    // retrieve data (without ids and fks set)
 
     public function getProject(): ?Project
     {
@@ -175,13 +149,13 @@ class SkipassService implements SkipassServiceInterface
 
     public function updateDayCount()
     {
-        $this->ensureProject();
         $this->ensureSkipass();
 
         try {
             $count = $this->pass->count();
-            if (!is_null($this->ticket)) {
-                $this->ticket->setAttribute('day_count', $count);
+            if (isset($this->ticket)) {
+                $this->ticket->day_count = $count;
+                $this->ticket->last_logs_update = new \DateTime();
                 $this->ticket->save();
             }
         } catch (FetchException $e) {
@@ -191,7 +165,6 @@ class SkipassService implements SkipassServiceInterface
 
     public function updateLogs($limit, $offset)
     {
-        $this->ensureProject();
         $this->ensureSkipass();
 
         try {
@@ -252,31 +225,28 @@ class SkipassService implements SkipassServiceInterface
                 $last = end($this->logs);
                 $first = reset($this->logs);
 
-                $modified = false;
+                if (is_null($this->ticket->first_lift_id) && $first->day_n == 0 && $first->ride_n == 0) {
+                    $this->ticket->first_lift_id = $first->lift_id;
+                }
+
                 if (is_null($this->ticket->first_day_at) || $first->logged_at < $this->ticket->first_day_at) {
                     $this->ticket->first_day_at = $first->logged_at;
-                    $modified = true;
                 }
 
                 if (is_null($this->ticket->first_day_n) || $first->day_n < $this->ticket->first_day_n) {
                     $this->ticket->first_day_n = $first->day_n;
-                    $modified = true;
                 }
 
                 if (is_null($this->ticket->last_day_at) || $this->ticket->last_day_at < $last->logged_at) {
                     $this->ticket->last_day_at = $last->logged_at;
-                    $modified = true;
                 }
 
                 if (is_null($this->ticket->last_day_n) || $this->ticket->last_day_n < $last->day_n) {
                     $this->ticket->last_day_n = $last->day_n;
-                    $modified = true;
-                }
-
-                if ($modified) {
-                    $this->ticket->save();
                 }
             }
+            $this->ticket->last_logs_update = new \DateTime();
+            $this->ticket->save();
         } catch (\InvalidArgumentException $e) {
             throw new \OutOfBoundsException('Invalid offset and/or limit value: ' . $offset . '/' . $limit, 400, $e);
         } catch (FetchException $e) {
@@ -287,11 +257,13 @@ class SkipassService implements SkipassServiceInterface
     public function maybeUpdateLogs()
     {
         if (is_null($this->ticket)) {
-            // wtp mode -> always fetch all
+            // we have no cached ticket or wtp -> always update
             $this->updateLogs(-1, 0);
-        } elseif (
+            // now we have a ticket, so fill day count
+            $this->updateDayCount();
+        } elseif ( // TODO: correct DateInterval comparison
             is_null($this->ticket->last_day_at) ||
-            $this->ticket->updated_at->diff($this->ticket->last_day_at) < $this->max_update_age
+            $this->ticket->last_logs_update->diff($this->ticket->last_day_at)->m < $this->max_update_age->m
         ) {
             // we have a last day set and the difference to the latest update is shorter max age -> update count
             // and fetch only the missing logs
@@ -313,10 +285,44 @@ class SkipassService implements SkipassServiceInterface
         }
     }
 
+    /**
+     * @throws FetchException
+     * @throws NotFoundException
+     */
     private function ensureSkipass()
     {
-        if (is_null($this->client)) {
-            throw new \LogicException('No pass found. Please set via ticket or wtp', 500);
+        if (is_null($this->pass)) {
+            $this->ensureProject();
+
+            if (isset($this->ticket_name)) {
+                $t = Ticket::for($this->ticket_name);
+                $this->client->setTicket($t);
+                $this->pass = new Skipass($this->client, new Selector($this->timezone));
+                if (is_null($this->ticket)) {
+                    $this->ticket = \App\Ticket::firstOrCreate(
+                        [
+                            'project_id' => $this->project->id,
+                            'project_name' => $this->project->name,
+                            'name' => $t->getId()],
+                        [
+                            'project' => $t->getProject(),
+                            'pos' => $t->getPos(),
+                            'serial' => $t->getSerial()
+                        ]);
+                }
+                $this->lifts = [];
+                $this->logs = [];
+            } elseif (isset($this->wtp_name)) {
+                $this->client->setWtp(Wtp::for(wtp_name));
+                $this->pass = new Skipass($this->client, new Selector($this->timezone));
+                $this->ticket = new \App\Ticket([
+                    'project_name' => $this->client->getProjectId()
+                ]);
+                $this->lifts = [];
+                $this->logs = [];
+            } else {
+                throw new \LogicException('No pass found. Please set via ticket or wtp', 500);
+            }
         }
     }
 
